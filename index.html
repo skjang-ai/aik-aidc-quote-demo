@@ -184,7 +184,7 @@ header .intro{text-align:center;max-width:900px;padding:38px 15px 68px}header .i
     turns.push({user:true,text});box.value="";busy=true;controls();drawLog();
     el("guest-status").textContent=t("용도와 규모를 확인하고 있습니다…","Reviewing workload and scale…");
     const preview=requestTurn(text,prior,"preview",job.controller.signal).then(data=>{
-      if(data.preview && data.action!=="unavailable")display(job,data,true);
+      if(data.preview && data.action!=="unavailable" && !data.repeatedQuestion)display(job,data,true);
     }).catch(()=>{});
     try{
       const data=await requestTurn(text,prior,"review",job.controller.signal);
