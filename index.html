@@ -116,7 +116,7 @@ header .intro{text-align:center;max-width:900px;padding:38px 15px 68px}header .i
     ["가상 머신 운영","Virtual machines","가상 머신 40대를 운영하려고 합니다.","We plan to run 40 virtual machines."],
     ["백업 보관","Backup retention","매일 500GB가 생기는 백업 데이터를 보관하고 싶어요.","We need to keep 500 GB of new backup data each day."]
   ];
-  let session=null,quote=null,busy=false,turns=[];
+  let session=null,quote=null,busy=false,turns=[],active=null;
   function drawLog(){
     const greeting=t("하려는 일과 대략적인 규모를 알려주세요. 필요한 정보를 함께 확인하고, 판매 카탈로그에서 맞는 서버와 대수를 찾아드릴게요.","Tell me what you want to run and roughly at what scale. I’ll ask about the details and find a suitable configuration and node count in the sales catalog.");
     log.replaceChildren();
@@ -124,7 +124,8 @@ header .intro{text-align:center;max-width:900px;padding:38px 15px 68px}header .i
       const d=node("article",null,"turn"+(item.user?" user":""));
       d.append(node("b",item.user?t("나","You"):"AIK"),node("p",item.user?item.text:item.reply[en()?1:0]));
       if(item.model && item.thinkingLevel)d.append(node("small",item.model+" · Thinking "+item.thinkingLevel));
-      if(item.engine==="catalog")d.append(node("small",t("카탈로그 규칙으로 처리","Processed using catalog rules")));
+      if(item.preview)d.append(node("small",item.reviewing?t("판매 카탈로그 1차 안내 · AI 검토 중","Catalog estimate · AI review in progress"):t("판매 카탈로그 1차 안내","Catalog estimate")));
+      else if(item.engine==="catalog")d.append(node("small",t("카탈로그 규칙으로 처리","Processed using catalog rules")));
       log.append(d);
     }log.scrollTop=log.scrollHeight;
   }
@@ -156,22 +157,54 @@ header .intro{text-align:center;max-width:900px;padding:38px 15px 68px}header .i
     }
   }
   function controls(){box.disabled=busy;el("send").disabled=busy;el("restart").disabled=busy;for(const b of el("seed").querySelectorAll("button"))b.disabled=busy;}
+  async function requestTurn(text,prior,phase,signal){
+    const response=await fetch(hostedAPI+"/api/sample/turn",{method:"POST",credentials:"omit",signal,headers:{"Content-Type":"application/json","X-AIK-Demo":"1"},body:JSON.stringify({text,session:prior,phase})});
+    if(!response.ok){const err=new Error();err.code=response.status;throw err;}
+    return response.json();
+  }
+  function cancelReview(){
+    if(!active)return;
+    active.controller.abort();clearTimeout(active.timer);
+    if(active.answer)active.answer.reviewing=false;
+    active=null;
+  }
+  function display(job,data,preview){
+    if(active!==job || job.finished)return;
+    if(!job.answer){job.answer={};turns.push(job.answer);}
+    Object.assign(job.answer,{reply:data.reply,engine:data.engine,model:data.model,thinkingLevel:data.thinkingLevel,preview,reviewing:preview});
+    session=data.session;quote=data.quote;job.finished=!preview;
+    drawLog();drawQuote();busy=false;controls();
+    el("guest-status").textContent=preview?t("추가 조건을 바로 입력할 수 있어요.","You can enter your next requirement now."):"";
+  }
   form.onsubmit=async e=>{
     e.preventDefault();if(busy||!box.value.trim())return;
-    const text=box.value.trim();turns.push({user:true,text});box.value="";busy=true;controls();drawLog();
+    cancelReview();
+    const text=box.value.trim(), prior=session, job={controller:new AbortController(),answer:null,finished:false};
+    active=job;job.timer=setTimeout(()=>job.controller.abort(),115000);
+    turns.push({user:true,text});box.value="";busy=true;controls();drawLog();
     el("guest-status").textContent=t("용도와 규모를 확인하고 있습니다…","Reviewing workload and scale…");
+    const preview=requestTurn(text,prior,"preview",job.controller.signal).then(data=>{
+      if(data.preview && data.action!=="unavailable")display(job,data,true);
+    }).catch(()=>{});
     try{
-      const response=await fetch(hostedAPI+"/api/sample/turn",{method:"POST",credentials:"omit",headers:{"Content-Type":"application/json","X-AIK-Demo":"1"},body:JSON.stringify({text,session})});
-      if(!response.ok){const err=new Error();err.code=response.status;throw err;}
-      const data=await response.json();session=data.session;quote=data.quote;
-      turns.push({reply:data.reply,engine:data.engine,model:data.model,thinkingLevel:data.thinkingLevel});drawLog();drawQuote();el("guest-status").textContent="";
+      const data=await requestTurn(text,prior,"review",job.controller.signal);
+      display(job,data,false);
     }catch(e){
-      turns.pop();box.value=text;drawLog();
-      el("guest-status").textContent=e.code===429?t("잠시 후 다시 보내 주세요.","Please try again in a little while."):e.code===409?t("상담 시간이 끝났습니다. 새 상담을 열어 주세요.","This conversation expired. Start a new chat."):e.code===503?t("추론 모델에 일시적으로 연결할 수 없어요. 같은 메시지를 다시 보내 주세요.","The reasoning model is temporarily unavailable. Please resend your message."):t("답변을 받지 못했습니다. 잠시 후 다시 보내 주세요.","The response was unavailable. Please try again.");
-    }finally{busy=false;controls();box.focus({preventScroll:true});}
+      await preview;
+      if(active!==job)return;
+      if(job.answer){
+        job.answer.reviewing=false;drawLog();
+        el("guest-status").textContent=t("AI 검토가 지연됐어요. 위 1차 안내에서 상담을 이어갈 수 있어요.","AI review is delayed. You can continue with the catalog estimate above.");
+      }else{
+        turns.pop();box.value=text;drawLog();
+        el("guest-status").textContent=e.code===429?t("잠시 후 다시 보내 주세요.","Please try again in a little while."):e.code===409?t("상담 시간이 끝났습니다. 새 상담을 열어 주세요.","This conversation expired. Start a new chat."):t("응답이 지연됐어요. 같은 메시지를 다시 보내 주세요.","The response is delayed. Please resend your message.");
+      }
+    }finally{
+      if(active===job){cancelReview();busy=false;controls();if(!box.value)box.focus({preventScroll:true});}
+    }
   };
   box.onkeydown=e=>{if(e.key==="Enter"&&!e.isComposing&&(e.ctrlKey||e.metaKey)){e.preventDefault();form.requestSubmit();}};
-  el("restart").onclick=()=>{if(busy)return;turns=[];quote=null;session=null;el("guest-status").textContent="";box.value="";update();box.focus();};
+  el("restart").onclick=()=>{if(busy)return;cancelReview();turns=[];quote=null;session=null;el("guest-status").textContent="";box.value="";update();box.focus();};
   document.addEventListener("aik-language",update);update();
 })();
 </script>
