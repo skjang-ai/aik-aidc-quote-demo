@@ -333,6 +333,19 @@ window.aikQuoteMail = function ({email, sku, units, nodes, specs, workload, head
     for(const item of [{user:false,reply:[greeting,greeting]},...turns]){
       const d=node("article",null,"turn"+(item.user?" user":""));
       d.append(node("b",item.user?t("나","You"):"AIK"),node("p",item.user?item.text:item.reply[en()?1:0]));
+      if(item.references?.length){
+        const links=node("ul");
+        for(const ref of item.references){
+          const a=node("a",ref.title);a.href=ref.url;a.target="_blank";a.rel="noopener noreferrer";
+          if(ref.kind==="image"){
+            const img=node("img");img.alt=ref.title;img.loading="lazy";img.src=ref.url;
+            img.style.cssText="display:block;max-width:min(100%,260px);max-height:160px;object-fit:contain";
+            a.append(img);
+          }
+          const li=node("li");li.append(a);links.append(li);
+        }
+        d.append(links);
+      }
       if(item.model && item.thinkingLevel)d.append(node("small",item.model+" · Thinking "+item.thinkingLevel));
       if(item.engine==="catalog")d.append(node("small",t("카탈로그 규칙으로 처리","Processed using catalog rules")));
       log.append(d);
@@ -412,7 +425,7 @@ window.aikQuoteMail = function ({email, sku, units, nodes, specs, workload, head
     try{
       const data=await requestTurn(text,controller.signal);
       session=data.session;quote=data.quote;
-      turns.push({reply:data.reply,engine:data.engine,model:data.model,thinkingLevel:data.thinkingLevel});
+      turns.push({reply:data.reply,references:data.references,engine:data.engine,model:data.model,thinkingLevel:data.thinkingLevel});
       drawLog();drawQuote();el("guest-status").textContent="";
     }catch(e){
       turns.pop();box.value=text;drawLog();
