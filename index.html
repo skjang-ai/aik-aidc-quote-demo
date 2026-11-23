@@ -32,6 +32,10 @@ header .intro{text-align:center;max-width:900px;padding:38px 15px 68px}header .i
 
 .print-letterhead{display:none}
 .embedded>.mast,.embedded>header{display:none}.embedded main.wrap{padding-top:0}.embedded .agent{margin-top:0}
+.inquiry-mode #presets,.inquiry-mode .guide-foot,.inquiry-mode .aik-quote-mail{display:none}
+.inquiry-action{margin:16px 0;color:#233d59}
+.inquiry-action button{background:#164585;color:white;border:0;border-radius:6px;font:inherit;font-weight:700;padding:10px 16px;cursor:pointer}
+.inquiry-action p{margin:6px 0}.inquiry-action textarea{width:100%;box-sizing:border-box;font:inherit}
 .embedded .agent #dialogue{height:clamp(260px,var(--host-chat-height,53vh),620px)}
 .agentbar .quote-nav{display:flex;gap:8px;align-items:center}.agentbar #jump-quote{border-color:#95aebe;color:var(--blue);font-weight:650}
 .review-facts{display:grid;grid-template-columns:max-content 1fr;clear:both;gap:6px 15px;margin:13px 0;padding:12px 0;border-top:1px solid var(--line);font-size:.89rem}
@@ -252,6 +256,69 @@ window.aikQuoteMail = function ({email, sku, units, nodes, specs, workload, head
   const en=()=>document.documentElement.lang==="en";
   const t=(ko,eng)=>en()?eng:ko;
   const node=(tag,content,cls)=>{const n=document.createElement(tag);if(content!=null)n.textContent=content;if(cls)n.className=cls;return n;};
+  const inquiryMode = new URLSearchParams(location.search).get("inquiry") === "1";
+  const inquiryOrigins = new Set(["https://www.aik.co.kr", "https://aik.co.kr", "https://en.aik.co.kr", "http://127.0.0.1:8770", "http://localhost:8770"]);
+  let inquiryOrigin = "";
+  if (inquiryMode) {
+    document.body.classList.add("inquiry-mode");
+    window.addEventListener("message", event => {
+      if (window.parent === window || event.source !== window.parent || !inquiryOrigins.has(event.origin)) return;
+      if (event.data?.type === "aik-inquiry-ready") {
+        inquiryOrigin = event.origin;
+        const button = el("use-inquiry-quote");
+        if (button) button.textContent = t("이 구성으로 견적문의", "Use this configuration in my inquiry");
+      }
+      const status = el("inquiry-transfer-status");
+      if (event.data?.type === "aik-inquiry-manual") {
+        inquiryOrigin = "";
+        const button = el("use-inquiry-quote");
+        if (button) button.textContent = t("문의서에 넣을 사양 복사", "Copy configuration for my inquiry");
+        if (status) status.textContent = t("사양을 복사해 문의 내용에 붙여넣을 수 있습니다.", "Copy the configuration and paste it into your inquiry.");
+      }
+      if (event.data?.type === "aik-inquiry-applied" && status) {
+        status.textContent = t("추천 사양을 문의서에 담았습니다.", "Your configuration has been added to the inquiry.");
+      }
+    });
+    if (document.referrer && window.parent !== window) {
+      const parentOrigin = new URL(document.referrer).origin;
+      if (inquiryOrigins.has(parentOrigin)) window.parent.postMessage({type:"aik-inquiry-hello"}, parentOrigin);
+    }
+  }
+
+  function inquiryAction(subject, body) {
+    const section = node("div", null, "inquiry-action");
+    const button = node("button", inquiryOrigin
+      ? t("이 구성으로 견적문의", "Use this configuration in my inquiry")
+      : t("문의서에 넣을 사양 복사", "Copy configuration for my inquiry"));
+    button.type = "button";
+    button.id = "use-inquiry-quote";
+    const status = node("p");
+    status.id = "inquiry-transfer-status";
+    status.setAttribute("role", "status");
+    const manual = node("textarea");
+    manual.readOnly = true;
+    manual.hidden = true;
+    manual.rows = 6;
+    manual.setAttribute("aria-label", t("문의서에 넣을 추천 사양", "Configuration for your inquiry"));
+    button.onclick = async () => {
+      if (inquiryOrigin) {
+        window.parent.postMessage({type:"aik-inquiry-use", subject, body}, inquiryOrigin);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(body);
+        status.textContent = t("사양을 복사했습니다. 견적문의의 내용 칸에 붙여넣어 주세요.", "Configuration copied. Paste it into the inquiry message.");
+      } catch {
+        manual.value = body;
+        manual.hidden = false;
+        manual.focus();
+        manual.select();
+        status.textContent = t("선택된 사양을 복사해 문의 내용에 붙여넣어 주세요.", "Copy the selected configuration and paste it into the inquiry.");
+      }
+    };
+    section.append(button, status, manual);
+    return section;
+  }
   const form=el("guest-form"), box=el("guest-text"), log=el("dialogue");
   const prompts=[
     ["로봇 학습·추론","Robot training and inference","직원 20명 정도가 피지컬 AI 로봇 학습, 추론, 테스트에 쓸 서버를 구축하고 싶어요.","Our team of 20 needs a server for physical AI robot training, inference and testing."],
@@ -311,6 +378,11 @@ window.aikQuoteMail = function ({email, sku, units, nodes, specs, workload, head
     refs.append(print);card.append(refs);
     const workload=review?.rows.find(row=>row.label[1]==="Workload")?.value[lang];
     const parts=Array.from(body.rows,row=>row.cells[1].firstChild.textContent+" × "+row.cells[2].textContent);
+    if (inquiryMode) {
+      const subject = t("[AI 서버 견적] ", "[AI server quote] ") + quote.sku;
+      const configuration = [subject, dimensions.join(" · "), ...parts].join("\n");
+      card.insertBefore(inquiryAction(subject, configuration), scroller);
+    }
     card.append(window.aikQuoteMail({email:"jacob.song@aik.co.kr",sku:quote.sku,units:quote.units,nodes:quote.nodes,
       specs:dimensions.slice(quote.nodes>1?2:1).join(" · "),workload,heading,parts,english:en()}));
   }
