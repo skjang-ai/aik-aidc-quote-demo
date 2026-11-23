@@ -257,7 +257,7 @@ window.aikQuoteMail = function ({email, sku, units, nodes, specs, workload, head
   const t=(ko,eng)=>en()?eng:ko;
   const node=(tag,content,cls)=>{const n=document.createElement(tag);if(content!=null)n.textContent=content;if(cls)n.className=cls;return n;};
   const inquiryMode = new URLSearchParams(location.search).get("inquiry") === "1";
-  const inquiryOrigins = new Set(["https://www.aik.co.kr", "https://aik.co.kr", "https://en.aik.co.kr", "http://127.0.0.1:8770", "http://localhost:8770"]);
+  const inquiryOrigins = new Set(["https://www.aik.co.kr", "https://aik.co.kr", "https://en.aik.co.kr", "https://aik-corporate-renewal.duskyeft7.chatgpt.site", "http://127.0.0.1:8770", "http://localhost:8770"]);
   let inquiryOrigin = "";
   if (inquiryMode) {
     document.body.classList.add("inquiry-mode");
