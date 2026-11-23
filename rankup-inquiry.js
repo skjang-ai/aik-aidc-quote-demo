@@ -36,6 +36,14 @@
     panel.dataset.connected = "1";
     panel.style.cssText = "margin:20px 0;padding:16px 18px;border:1px solid #c8d8e8;border-radius:8px;background:#f5f9fd;color:#173e66;text-align:left;box-sizing:border-box;max-width:100%";
     if (listPage) {
+      for (const existing of document.querySelectorAll('#p_content_box a[href*="write.html"]')) {
+        const target = new URL(existing.href, location.href);
+        if (target.origin === location.origin && target.pathname === "/board/write.html" &&
+            target.searchParams.get("fno") === "8" && !target.searchParams.has("pid")) {
+          target.searchParams.set("pid", "57");
+          existing.href = target.href;
+        }
+      }
       const link = document.createElement("a");
       link.href = "/board/write.html?pid=57&fno=8";
       link.textContent = label("AI 상담 · 견적문의 작성하기", "AI consultation and quote inquiry");
@@ -63,7 +71,7 @@
     status.setAttribute("role", "status");
     status.style.margin = "6px 0 0";
     panel.append(status);
-    const send = type => frame.contentWindow?.postMessage({type}, site);
+    const send = type => frame.contentWindow?.postMessage({type, version:2}, site);
     frame.addEventListener("load", () => send("aik-inquiry-ready"));
     let lastBody = "";
     let lastContent = "";
@@ -86,9 +94,10 @@
       if (message.body !== lastBody || current !== lastContent) {
         if (editor) {
           const block = document.createElement("p");
-          for (const [index, line] of message.body.split(/\r?\n/).entries()) {
+          const lines = message.body.split(/\r?\n/);
+          for (let index = 0; index < lines.length; index++) {
             if (index) block.append(document.createElement("br"));
-            block.append(document.createTextNode(line));
+            block.append(document.createTextNode(lines[index]));
           }
           editor.setIR(current + block.outerHTML);
           editor.exec("UPDATE_CONTENTS_FIELD", []);

@@ -263,7 +263,7 @@ window.aikQuoteMail = function ({email, sku, units, nodes, specs, workload, head
     document.body.classList.add("inquiry-mode");
     window.addEventListener("message", event => {
       if (window.parent === window || event.source !== window.parent || !inquiryOrigins.has(event.origin)) return;
-      if (event.data?.type === "aik-inquiry-ready") {
+      if (event.data?.type === "aik-inquiry-ready" && event.data.version === 2) {
         inquiryOrigin = event.origin;
         const button = el("use-inquiry-quote");
         if (button) button.textContent = t("이 구성으로 견적문의", "Use this configuration in my inquiry");
